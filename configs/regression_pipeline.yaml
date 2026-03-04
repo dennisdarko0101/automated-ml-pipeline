@@ -1,0 +1,33 @@
+name: diabetes-regression
+data_source: data/diabetes.csv
+target_column: target
+test_size: 0.2
+val_size: 0.1
+random_state: 42
+
+feature_config:
+  numeric_strategy: standard
+  categorical_strategy: label
+  missing_strategy: mean
+  datetime_columns: []
+  interaction_columns: []
+  correlation_threshold: 0.95
+  variance_threshold: 0.01
+  top_k_features: null
+
+training_config:
+  task_type: regression
+  models:
+    - linear_regression
+    - random_forest
+    - xgboost
+    - lightgbm
+  n_trials: 10
+  cv_folds: 5
+  metric: r2
+  timeout_seconds: 1800
+
+evaluation_config:
+  primary_metric: r2
+  significance_level: 0.05
+  min_improvement: 0.01

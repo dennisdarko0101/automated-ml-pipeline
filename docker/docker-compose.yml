@@ -1,0 +1,49 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - PREFECT_API_URL=http://prefect:4200/api
+      - LOG_LEVEL=INFO
+    depends_on:
+      - mlflow
+      - prefect
+    volumes:
+      - model-data:/app/models
+      - pipeline-data:/app/data
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.12.1
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    volumes:
+      - mlflow-data:/mlflow
+    restart: unless-stopped
+
+  prefect:
+    image: prefecthq/prefect:3-python3.11
+    ports:
+      - "4200:4200"
+    command: prefect server start --host 0.0.0.0
+    environment:
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+    volumes:
+      - prefect-data:/root/.prefect
+    restart: unless-stopped
+
+volumes:
+  mlflow-data:
+  prefect-data:
+  model-data:
+  pipeline-data:

@@ -1,0 +1,33 @@
+name: iris-classification
+data_source: data/iris.csv
+target_column: target
+test_size: 0.2
+val_size: 0.1
+random_state: 42
+
+feature_config:
+  numeric_strategy: standard
+  categorical_strategy: onehot
+  missing_strategy: median
+  datetime_columns: []
+  interaction_columns: []
+  correlation_threshold: 0.95
+  variance_threshold: 0.01
+  top_k_features: null
+
+training_config:
+  task_type: classification
+  models:
+    - logistic_regression
+    - random_forest
+    - xgboost
+    - lightgbm
+  n_trials: 10
+  cv_folds: 5
+  metric: f1
+  timeout_seconds: 1800
+
+evaluation_config:
+  primary_metric: f1
+  significance_level: 0.05
+  min_improvement: 0.01
