@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,9 +30,14 @@ class PromotionResult:
 class MLflowRegistry:
     """Wrapper around MLflow model registry for production workflows."""
 
-    def __init__(self, tracking_uri: str = "http://localhost:5000") -> None:
-        self.tracking_uri = tracking_uri
-        mlflow.set_tracking_uri(tracking_uri)
+    def __init__(self, tracking_uri: str | None = None) -> None:
+        # Default to the MLFLOW_TRACKING_URI env var so the registry talks to the
+        # configured tracking server (e.g. the mlflow service in Docker) rather
+        # than always assuming localhost.
+        self.tracking_uri = tracking_uri or os.environ.get(
+            "MLFLOW_TRACKING_URI", "http://localhost:5000"
+        )
+        mlflow.set_tracking_uri(self.tracking_uri)
 
     def register_model(
         self,
@@ -70,6 +76,35 @@ class MLflowRegistry:
         """Load a specific model version."""
         model_uri = f"models:/{name}/{version}"
         return mlflow.sklearn.load_model(model_uri)
+
+    def load_production_preprocessing(self, name: str) -> tuple[Any, list[str] | None]:
+        """Load the fitted feature pipeline and selected columns for the champion.
+
+        Returns ``(pipeline, columns)`` for the current Production version so the
+        prediction path can apply the same preprocessing used during training.
+        Returns ``(None, None)`` if no preprocessing artifacts were stored (for
+        example, a model registered before preprocessing logging was added).
+        """
+        import json
+        from pathlib import Path
+
+        from src.features.engineer import FeaturePipeline
+
+        client = mlflow.tracking.MlflowClient()
+        prod = [
+            v for v in client.search_model_versions(f"name='{name}'")
+            if v.current_stage == "Production"
+        ]
+        if not prod:
+            return None, None
+
+        run_id = max(prod, key=lambda v: int(v.version)).run_id
+        local_dir = Path(
+            mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path="preprocessing")
+        )
+        pipeline = FeaturePipeline.load(local_dir / "feature_pipeline.joblib")
+        columns = json.loads((local_dir / "selected_columns.json").read_text())
+        return pipeline, columns
 
     def compare_with_production(
         self,
@@ -110,16 +145,26 @@ class MLflowRegistry:
         )
 
     def list_models(self) -> list[dict[str, Any]]:
-        """List all registered models."""
+        """List all registered models with their latest version per stage.
+
+        Built from ``search_model_versions`` rather than
+        ``search_registered_models`` so it stays correct when the MLflow client
+        and tracking server are different versions: a newer client applies a
+        registered-models search filter that an older server does not honour,
+        which silently returns no models even though versions exist.
+        """
         client = mlflow.tracking.MlflowClient()
-        models = client.search_registered_models()
+        versions = client.search_model_versions()
+
+        by_name: dict[str, dict[str, dict[str, Any]]] = {}
+        for v in versions:
+            stage = v.current_stage or "None"
+            stages = by_name.setdefault(v.name, {})
+            existing = stages.get(stage)
+            if existing is None or int(v.version) > int(existing["version"]):
+                stages[stage] = {"version": v.version, "stage": stage, "run_id": v.run_id}
+
         return [
-            {
-                "name": m.name,
-                "latest_versions": [
-                    {"version": v.version, "stage": v.current_stage, "run_id": v.run_id}
-                    for v in (m.latest_versions or [])
-                ],
-            }
-            for m in models
+            {"name": name, "latest_versions": list(stages.values())}
+            for name, stages in sorted(by_name.items())
         ]

@@ -1,13 +1,18 @@
+name: automated-ml-pipeline
+
 services:
   api:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     ports:
-      - "8000:8000"
+      # Host 8230 -> container 8000. Distinct from sibling projects
+      # (guardrails 8100, ml-monitoring 8210, recommendation 8220).
+      - "8230:8000"
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - PREFECT_API_URL=http://prefect:4200/api
+      - PREFECT_HOME=/app/.prefect
       - LOG_LEVEL=INFO
     depends_on:
       - mlflow
@@ -20,13 +25,17 @@ services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.12.1
     ports:
-      - "5000:5000"
+      # MLflow tracking UI (the screenshot surface) on host 5230.
+      - "5230:5000"
+    # serve-artifacts so clients upload model artifacts through the tracking
+    # server over HTTP, instead of needing write access to a shared filesystem.
     command: >
       mlflow server
       --host 0.0.0.0
       --port 5000
       --backend-store-uri sqlite:///mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      --artifacts-destination /mlflow/artifacts
+      --serve-artifacts
     volumes:
       - mlflow-data:/mlflow
     restart: unless-stopped
@@ -34,7 +43,8 @@ services:
   prefect:
     image: prefecthq/prefect:3-python3.11
     ports:
-      - "4200:4200"
+      # Prefect orchestration UI on host 4230.
+      - "4230:4200"
     command: prefect server start --host 0.0.0.0
     environment:
       - PREFECT_SERVER_API_HOST=0.0.0.0

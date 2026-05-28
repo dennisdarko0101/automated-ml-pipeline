@@ -146,7 +146,9 @@ class TestRegisterTask:
         split = splitter.train_val_test_split(iris_df, "target", test_size=0.2, val_size=0.1)
         train_result = train_models.fn(split, config)
         comparison = evaluate_models.fn(train_result, split, config)
-        run_id = register_best_model.fn(comparison, config)
+        df_engineered, feature_pipeline = engineer_features.fn(iris_df, config)
+        selected_columns = [c for c in df_engineered.columns if c != "target"]
+        run_id = register_best_model.fn(comparison, config, feature_pipeline, selected_columns)
         assert isinstance(run_id, str)
 
 

@@ -15,10 +15,10 @@ python scripts/run_pipeline.py configs/classification_pipeline.yaml
 make docker-build
 make docker-up
 
-# Services:
-#   API:     http://localhost:8000
-#   MLflow:  http://localhost:5000
-#   Prefect: http://localhost:4200
+# Services (host ports defined in docker/docker-compose.yml):
+#   API:     http://localhost:8230 (docs at /docs)
+#   MLflow:  http://localhost:5230
+#   Prefect: http://localhost:4230
 ```
 
 ## Production Deployment

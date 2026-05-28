@@ -25,9 +25,9 @@ make test
 ## Known Limitations
 
 - Hyperparameter tuning uses RandomizedSearchCV (no Bayesian optimization built in yet)
-- Time-series models (ARIMA, Prophet) not included — extend via custom model types
-- No GPU training support yet — add CUDA-enabled Docker image for GPU workloads
-- Pipeline scheduler stores history in-memory — swap for database in production
+- Time-series models (ARIMA, Prophet) not included; extend via custom model types
+- No GPU training support yet; add a CUDA-enabled Docker image for GPU workloads
+- Pipeline scheduler stores history in-memory; swap for a database in production
 
 ## File Map
 

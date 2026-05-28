@@ -162,6 +162,13 @@ async def predict(request: PredictRequest):
 
     try:
         df = pd.DataFrame([request.features])
+        # Apply the same preprocessing (scaling, encoding, feature selection) the
+        # model was trained on; without this, raw inputs produce wrong predictions.
+        pipeline, columns = registry.load_production_preprocessing(request.model_name)
+        if pipeline is not None:
+            df = pipeline.transform(df)
+            if columns:
+                df = df[columns]
         prediction = model.predict(df)
         probabilities = None
         if hasattr(model, "predict_proba"):

@@ -1,5 +1,5 @@
 name: iris-classification
-data_source: data/iris.csv
+data_source: sample_data/iris.csv
 target_column: target
 test_size: 0.2
 val_size: 0.1

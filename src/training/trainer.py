@@ -80,6 +80,7 @@ class AutoTrainer:
         cv_folds: int = 5,
         metric: str | None = None,
         random_state: int = 42,
+        n_jobs: int = 2,
     ) -> None:
         if task_type not in ("classification", "regression"):
             raise ValueError(f"task_type must be classification or regression, got {task_type}")
@@ -89,7 +90,38 @@ class AutoTrainer:
         self.cv_folds = cv_folds
         self.metric = metric or ("f1" if task_type == "classification" else "r2")
         self.random_state = random_state
+        # Cap how many models/folds the hyperparameter search fits in parallel.
+        # The estimators themselves are pinned to one thread (see
+        # _build_base_estimator), so the search owns all parallelism and the two
+        # do not multiply into CPU oversubscription on busy hosts. Default to a
+        # small bound; raise it on dedicated machines.
+        self.n_jobs = n_jobs
         self.hp_space = HyperparameterSpace(task_type=task_type)
+
+    def _build_base_estimator(self, model_cls: type) -> Any:
+        """Construct an estimator pinned to a single thread.
+
+        RandomizedSearchCV already parallelises across CV folds via ``n_jobs``.
+        If each estimator also used every core, the two would multiply and
+        oversubscribe the CPU (12 workers x 12 threads thrashing on 12 cores), so
+        estimators are built single-threaded and the search owns the parallelism.
+        """
+        import inspect
+
+        params: dict[str, Any] = {}
+        try:
+            accepted = inspect.signature(model_cls).parameters
+            has_kwargs = any(p.kind == p.VAR_KEYWORD for p in accepted.values())
+            if "random_state" in accepted or has_kwargs:
+                params["random_state"] = self.random_state
+            if "n_jobs" in accepted or has_kwargs:
+                params["n_jobs"] = 1
+        except (TypeError, ValueError):
+            pass
+        try:
+            return model_cls(**params)
+        except TypeError:
+            return model_cls()
 
     def train(
         self,
@@ -148,7 +180,7 @@ class AutoTrainer:
         scoring = self._get_scoring()
 
         if search_space:
-            base_model = model_cls(random_state=self.random_state) if "random_state" in model_cls.__init__.__code__.co_varnames else model_cls()
+            base_model = self._build_base_estimator(model_cls)
             search = RandomizedSearchCV(
                 base_model,
                 search_space,
@@ -156,14 +188,14 @@ class AutoTrainer:
                 cv=self.cv_folds,
                 scoring=scoring,
                 random_state=self.random_state,
-                n_jobs=-1,
+                n_jobs=self.n_jobs,
                 error_score="raise",
             )
             search.fit(X_train, y_train)
             best_model = search.best_estimator_
             best_params = search.best_params_
         else:
-            best_model = model_cls()
+            best_model = self._build_base_estimator(model_cls)
             best_model.fit(X_train, y_train)
             best_params = {}
 

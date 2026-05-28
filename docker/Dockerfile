@@ -7,14 +7,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+# hatchling needs the readme and the package source present to build the
+# project wheel, so copy them before installing.
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+RUN pip install --no-cache-dir --timeout=300 --retries=10 --upgrade pip \
+    && pip install --no-cache-dir --timeout=300 --retries=10 .
 
 # Stage 2: Runtime
 FROM python:3.11-slim AS runtime
 
 WORKDIR /app
+
+# XGBoost and LightGBM load the OpenMP runtime (libgomp) at import time; the slim
+# base image does not ship it, so install it in the runtime stage.
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
@@ -23,6 +31,8 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY src/ ./src/
 COPY configs/ ./configs/
+COPY sample_data/ ./sample_data/
+COPY scripts/ ./scripts/
 
 RUN mkdir -p /app/data /app/models && chown -R appuser:appuser /app
 
